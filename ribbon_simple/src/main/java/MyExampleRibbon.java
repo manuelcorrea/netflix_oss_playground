@@ -1,5 +1,6 @@
 import com.google.common.collect.Lists;
 import com.netflix.client.ClientFactory;
+import com.netflix.client.http.HttpResponse;
 import com.netflix.config.ConfigurationManager;
 import com.netflix.loadbalancer.BaseLoadBalancer;
 import com.netflix.loadbalancer.LoadBalancerBuilder;
@@ -16,6 +17,7 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -25,35 +27,46 @@ public class MyExampleRibbon {
     
     
     public static void main(String args[])throws Exception{
-       // simpleGet("http://testingendpoint.cbplatform.link/?status=500&size=1");
+        HttpClientResponse<ByteBuf> response = simpleGet("http://testingendpoint.cbplatform.link/?status=200&size=1");
         
-        lbGet( Lists.newArrayList(
-                "localhost:9292",
-                "testingendpoint.cbplatform.link"
-        ) );
+        System.out.println(response.getStatus().code());
+        
+//        lbGet( Lists.newArrayList(
+//                "localhost:9292",
+//                "testingendpoint.cbplatform.link"
+//        ) );
     }
     
     
     
-    public static void simpleGet(String url){
+    public static HttpClientResponse<ByteBuf> simpleGet(String url)throws Exception{
         LoadBalancingHttpClient<ByteBuf, ByteBuf> client = RibbonTransport.newHttpClient();
         HttpClientRequest<ByteBuf> request = HttpClientRequest.createGet(url);
-        client.submit(request)
-                .toBlocking()
-                .forEach(new Action1<HttpClientResponse<ByteBuf>>() {
-                    @Override
-                    public void call(HttpClientResponse<ByteBuf> response) {
-                        System.out.println(response.getStatus());
-                        response.getContent().subscribe(new Action1<ByteBuf>() {
-                            @Override
-                            public void call(ByteBuf content) {
-                                System.out.println("Response content: " + content.toString(Charset.defaultCharset()));
-                            }
-                        });
-                    }
-                    
-                    
-                });
+       return client.submit(request).toBlocking().first();
+        
+        
+        
+//        final CountDownLatch latch = new CountDownLatch(1);
+//        client.submit(request)
+//                .toBlocking()
+//
+//                .forEach(new Action1<HttpClientResponse<ByteBuf>>() {
+//                    @Override
+//                    public void call(HttpClientResponse<ByteBuf> response) {
+//                        System.out.println("Status code: " + response.getStatus());
+//
+//                        response.getContent().subscribe(new Action1<ByteBuf>() {
+//
+//                            @Override
+//                            public void call(ByteBuf content) {
+//                                System.out.println("Response content: " + content.toString(Charset.defaultCharset()));
+//                                latch.countDown();
+//                            }
+//
+//                        });
+//                    }
+//                });
+//        latch.await(2, TimeUnit.SECONDS);
     }
     
     
@@ -67,6 +80,7 @@ public class MyExampleRibbon {
 
         LoadBalancingHttpClient<ByteBuf, ByteBuf> client = RibbonTransport.newHttpClient(lb);
         final CountDownLatch latch = new CountDownLatch(50);
+        
         Observer<HttpClientResponse<ByteBuf>> observer = new Observer<HttpClientResponse<ByteBuf>>() {
             @Override
             public void onCompleted() {

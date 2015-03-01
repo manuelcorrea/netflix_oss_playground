@@ -3,18 +3,20 @@
  */
 
 
+import com.netflix.client.http.HttpResponse;
 import com.netflix.hystrix.Hystrix;
 import com.netflix.hystrix.HystrixExecutableInfo;
-import com.netflix.ribbon.ClientOptions;
-import com.netflix.ribbon.Ribbon;
+import com.netflix.ribbon.*;
 import com.netflix.ribbon.http.HttpRequestTemplate;
 import com.netflix.ribbon.http.HttpResourceGroup;
+import com.netflix.ribbon.http.HttpResponseValidator;
 import com.netflix.ribbon.hystrix.FallbackHandler;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.UnpooledByteBufAllocator;
-import io.reactivex.netty.channel.StringTransformer;
+import io.reactivex.netty.protocol.http.client.HttpClientRequest;
 import io.reactivex.netty.protocol.http.client.HttpClientResponse;
 import rx.Observable;
+import rx.Observer;
+import rx.functions.Action1;
 import rx.functions.Func1;
 
 import java.nio.charset.Charset;
@@ -23,22 +25,30 @@ import java.util.Map;
 
 public class MyRibbonHystrix {
 
+
+    static HttpResourceGroup httpResourceGroup;
+    
     public static void main(String args[]){
+        
+        
         usingTemplate();
     }
-    
-    
+
+
     public static void usingTemplate(){
 
-        HttpResourceGroup httpResourceGroup = Ribbon.createHttpResourceGroup("testingendpoint",
+        httpResourceGroup = Ribbon.createHttpResourceGroup("testingendpoint",
                 ClientOptions.create()
                         .withMaxAutoRetriesNextServer(3)
                         .withConfigurationBasedServerList("localhost:9292"));
 
         HttpRequestTemplate<ByteBuf> endpointTemplate = httpResourceGroup.newTemplateBuilder("testingenpoint", ByteBuf.class)
                 .withMethod("GET")
-                .withUriTemplate("/headers")
-                .withFallbackProvider(new ValidateAuthTokenFallbackHandler()).build();
+                .withUriTemplate("/?status=200&size=1")
+                .withFallbackProvider(new ValidateAuthTokenFallbackHandler())
+                .withResponseValidator(new ServiceResponseValidator())
+
+                .build();
 
         String result = makeCall(endpointTemplate);
 
@@ -46,11 +56,12 @@ public class MyRibbonHystrix {
         Hystrix.reset();
         
     }
+
+    
     
     private static String makeCall(HttpRequestTemplate<ByteBuf> endpointTemplate){
-       
-        Observable<ByteBuf> serviceCall = endpointTemplate.requestBuilder().build().toObservable();
 
+        final Observable<ByteBuf> serviceCall = endpointTemplate.requestBuilder().build().toObservable();
 
         String result1 = serviceCall.map(new Func1<ByteBuf, String>() {
             @Override
@@ -59,6 +70,7 @@ public class MyRibbonHystrix {
                 return string;
             }
         }).toBlocking().first();
+
 
         return result1;
     }
@@ -69,22 +81,28 @@ public class MyRibbonHystrix {
             HttpResourceGroup httpResourceGroup = Ribbon.createHttpResourceGroup("testingendpoint",
                     ClientOptions.create()
                             .withMaxAutoRetriesNextServer(3)
-                            .withConfigurationBasedServerList("localhost:9393"));
+                            .withConfigurationBasedServerList("testingendpoint.cbplatform.link:80"));
 
             HttpRequestTemplate<ByteBuf> endpointTemplate = httpResourceGroup.newTemplateBuilder("testingenpoint", ByteBuf.class)
                     .withMethod("GET")
                     .withUriTemplate("/?size=1").build();
             
+
             System.out.println(hystrixInfo.isCircuitBreakerOpen());
             
             return  endpointTemplate.requestBuilder().build().toObservable();
 
+        }
+    }
 
-//            // TODO: Do something more useful
-//            byte[] bytes = "{}".getBytes(Charset.defaultCharset());
-//            ByteBuf byteBuf = UnpooledByteBufAllocator.DEFAULT.buffer(bytes.length);
-//            byteBuf.writeBytes(bytes);
-//            return Observable.just(byteBuf);
+    public static class ServiceResponseValidator implements HttpResponseValidator {
+        @Override
+        public void validate(HttpClientResponse<ByteBuf> response) throws UnsuccessfulResponseException, ServerError {
+            System.out.println(response.getStatus());
+            
+            if (response.getStatus().code() / 100 != 2) {
+                throw new UnsuccessfulResponseException("Unexpected HTTP status code " + response.getStatus());
+            }
         }
     }
 

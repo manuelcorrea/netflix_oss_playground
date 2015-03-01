@@ -21,10 +21,10 @@ public class MySimpleRibbon {
         LoadBalancingHttpClient<ByteBuf, ByteBuf> client = RibbonTransport.newHttpClient();
         HttpClientRequest<ByteBuf> request = HttpClientRequest.createGet("http://www.google.com/");
 
-        
         final CountDownLatch latch = new CountDownLatch(1);
         client.submit(request)
                 .toBlocking()
+                
                 .forEach(new Action1<HttpClientResponse<ByteBuf>>() {
                     @Override
                     public void call(HttpClientResponse<ByteBuf> t1) {
